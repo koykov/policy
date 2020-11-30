@@ -2,6 +2,8 @@ package policy
 
 import (
 	"math/rand"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -15,11 +17,11 @@ type testStageRW struct {
 }
 
 func (s *testStageRW) Fill(step int) {
-	if step < 0 || step >= testStageCap {
+	if step < 0 || step >= testStageCapRW {
 		step = 1
 	}
 	s.lock.Lock()
-	for i := 0; i < testStageCap; i += step {
+	for i := 0; i < testStageCapRW; i += step {
 		s.data[int32(i)] = rand.Int31()
 	}
 	s.lock.Unlock()
@@ -27,13 +29,13 @@ func (s *testStageRW) Fill(step int) {
 
 func (s *testStageRW) Write() {
 	s.lock.Lock()
-	s.data[rand.Int31n(testStageCap)] = rand.Int31()
+	s.data[rand.Int31n(testStageCapRW)] = rand.Int31()
 	s.lock.Unlock()
 }
 
 func (s *testStageRW) Read() {
 	s.lock.RLock()
-	v, ok := s.data[rand.Int31n(testStageCap)]
+	v, ok := s.data[rand.Int31n(testStageCapRW)]
 	s.lock.RUnlock()
 	_, _ = v, ok
 }
@@ -65,4 +67,56 @@ func BenchmarkRWLockPolicyLockFree(b *testing.B) {
 			stage.Read()
 		}
 	})
+}
+
+func BenchmarkRWLockPolicyMixed(b *testing.B) {
+	stage := testStageRW{data: make(map[int32]int32, testStageCapRW)}
+	stage.Fill(testStageCapRW)
+	stage.lock.SetPolicy(LockFree)
+
+	var (
+		wg    sync.WaitGroup
+		done  = make([]chan bool, 100)
+		state uint32
+	)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		done[i] = make(chan bool, 1)
+		go func(done chan bool) {
+			select {
+			case <-done:
+				wg.Done()
+				return
+			default:
+				if atomic.LoadUint32(&state) == 0 {
+					stage.Read()
+				} else {
+					if rand.Float64() < 0.5 {
+						stage.Read()
+					} else {
+						stage.Write()
+					}
+				}
+			}
+		}(done[i])
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if i%1e6 == 0 && i%2e6 != 0 {
+			stage.lock.SetPolicy(Locked)
+			atomic.StoreUint32(&state, 1)
+		}
+		if i%2e6 == 0 {
+			atomic.StoreUint32(&state, 0)
+			stage.lock.SetPolicy(LockFree)
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		done[i] <- true
+	}
+
+	wg.Done()
 }
