@@ -45,6 +45,10 @@ func (l *Lock) Unlock() {
 
 func (l *Lock) waitLF(final Policy) {
 	l.mux.Lock()
+	if l.GetPolicy() == final {
+		l.mux.Unlock()
+		return
+	}
 	atomic.StoreUint32((*uint32)(&l.policy), uint32(transitiveL))
 	for atomic.LoadInt32(&l.lfc) > 0 {
 	}
@@ -54,6 +58,10 @@ func (l *Lock) waitLF(final Policy) {
 
 func (l *Lock) waitL(final Policy) {
 	l.mux.Lock()
+	if l.GetPolicy() == final {
+		l.mux.Unlock()
+		return
+	}
 	atomic.StoreUint32((*uint32)(&l.policy), uint32(transitiveLF))
 	for atomic.LoadInt32(&l.lc) > 0 {
 	}
