@@ -6,8 +6,9 @@ import (
 )
 
 type Lock struct {
-	policy  Policy
-	mux     sync.Mutex
+	policy Policy
+	mux    sync.Mutex
+
 	lfc, lc int32
 }
 
@@ -25,8 +26,7 @@ func (l *Lock) GetPolicy() Policy {
 }
 
 func (l *Lock) Lock() {
-	policy := l.GetPolicy()
-	if policy == Locked || policy == transitiveL {
+	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
 		l.mux.Lock()
 		atomic.AddInt32(&l.lc, 1)
 		return
@@ -35,7 +35,7 @@ func (l *Lock) Lock() {
 }
 
 func (l *Lock) Unlock() {
-	if l.GetPolicy() == Locked {
+	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
 		l.mux.Unlock()
 		atomic.AddInt32(&l.lc, -1)
 		return
