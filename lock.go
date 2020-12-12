@@ -33,7 +33,7 @@ func (l *Lock) GetPolicy() Policy {
 // Lock internal mutex according policy.
 func (l *Lock) Lock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
-		// Lock mutex in Locked and transitive to lock states.
+		// Lock mutex in Locked or transitive to lock states.
 		l.mux.Lock()
 		// Increase locked counter.
 		atomic.AddInt32(&l.lc, 1)
@@ -46,7 +46,7 @@ func (l *Lock) Lock() {
 // Unlock internal mutex according policy.
 func (l *Lock) Unlock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
-		// Unlock mutex in Locked and transitive to lock-free states.
+		// Unlock mutex in Locked or transitive to lock-free states.
 		l.mux.Unlock()
 		// Decrease locked counter.
 		atomic.AddInt32(&l.lc, -1)
