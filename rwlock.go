@@ -5,14 +5,17 @@ import (
 	"sync/atomic"
 )
 
+// Read/Write lock policy.
 type RWLock struct {
 	policy Policy
 	mux    sync.RWMutex
-
+	// Lock-free/lock read counters.
 	lfcR, lcR int32
+	// Lock-free/lock write counters.
 	lfcW, lcW int32
 }
 
+// Set new policy.
 func (l *RWLock) SetPolicy(new Policy) {
 	if new == Locked {
 		l.waitL(new)
@@ -22,46 +25,64 @@ func (l *RWLock) SetPolicy(new Policy) {
 	}
 }
 
+// Get current policy.
 func (l *RWLock) GetPolicy() Policy {
 	return Policy(atomic.LoadUint32((*uint32)(&l.policy)))
 }
 
+// Lock write using internal mutex according policy.
 func (l *RWLock) Lock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
+		// Lock mutex in Locked or transitive to lock states.
 		l.mux.Lock()
+		// Increase locked write counter.
 		atomic.AddInt32(&l.lcW, 1)
 		return
 	}
+	// Increase lock-free write counter.
 	atomic.AddInt32(&l.lfcW, 1)
 }
 
+// Unlock write using internal mutex according policy.
 func (l *RWLock) Unlock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
+		// Unlock mutex in Locked or transitive to lock-free states.
 		l.mux.Unlock()
+		// Decrease locked write counter.
 		atomic.AddInt32(&l.lcW, -1)
 		return
 	}
+	// Decrease lock-free write counter.
 	atomic.AddInt32(&l.lfcW, -1)
 }
 
+// Lock read using internal mutex according policy.
 func (l *RWLock) RLock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
+		// Lock mutex in Locked or transitive to lock states.
 		l.mux.RLock()
+		// Increase locked read counter.
 		atomic.AddInt32(&l.lcR, 1)
 		return
 	}
+	// Increase lock-free read counter.
 	atomic.AddInt32(&l.lfcR, 1)
 }
 
+// Unlock read using internal mutex according policy.
 func (l *RWLock) RUnlock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
+		// Unlock mutex in Locked or transitive to lock-free states.
 		l.mux.RUnlock()
+		// Decrease locked read counter.
 		atomic.AddInt32(&l.lcR, -1)
 		return
 	}
+	// Decrease lock-free read counter.
 	atomic.AddInt32(&l.lfcR, -1)
 }
 
+// Wait finishing of all lock-free routines.
 func (l *RWLock) waitLF(final Policy) {
 	l.mux.Lock()
 	if l.GetPolicy() == final {
@@ -75,6 +96,7 @@ func (l *RWLock) waitLF(final Policy) {
 	l.mux.Unlock()
 }
 
+// Wait finishing of all locked routines.
 func (l *RWLock) waitL(final Policy) {
 	l.mux.Lock()
 	if l.GetPolicy() == final {
