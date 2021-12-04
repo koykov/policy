@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// Read/Write lock policy.
+// RWLock is a read/Write lock policy implementation.
 type RWLock struct {
 	policy Policy
 	mux    sync.RWMutex
@@ -15,7 +15,7 @@ type RWLock struct {
 	lfcW, lcW int32
 }
 
-// Set new policy.
+// SetPolicy sets lock's policy.
 func (l *RWLock) SetPolicy(new Policy) {
 	if new == Locked {
 		l.waitL(new)
@@ -25,12 +25,12 @@ func (l *RWLock) SetPolicy(new Policy) {
 	}
 }
 
-// Get current policy.
+// GetPolicy returns current policy.
 func (l *RWLock) GetPolicy() Policy {
 	return Policy(atomic.LoadUint32((*uint32)(&l.policy)))
 }
 
-// Lock write using internal mutex according policy.
+// Lock locks RW using internal mutex according policy.
 func (l *RWLock) Lock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
 		// Lock mutex in Locked or transitive to lock states.
@@ -43,7 +43,7 @@ func (l *RWLock) Lock() {
 	atomic.AddInt32(&l.lfcW, 1)
 }
 
-// Unlock write using internal mutex according policy.
+// Unlock unlocks RW using internal mutex according policy.
 func (l *RWLock) Unlock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
 		// Unlock mutex in Locked or transitive to lock-free states.
@@ -56,7 +56,7 @@ func (l *RWLock) Unlock() {
 	atomic.AddInt32(&l.lfcW, -1)
 }
 
-// Lock read using internal mutex according policy.
+// RLock locks read using internal mutex according policy.
 func (l *RWLock) RLock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveL {
 		// Lock mutex in Locked or transitive to lock states.
@@ -69,7 +69,7 @@ func (l *RWLock) RLock() {
 	atomic.AddInt32(&l.lfcR, 1)
 }
 
-// Unlock read using internal mutex according policy.
+// RUnlock unlocks read using internal mutex according policy.
 func (l *RWLock) RUnlock() {
 	if policy := l.GetPolicy(); policy == Locked || policy == transitiveLF {
 		// Unlock mutex in Locked or transitive to lock-free states.

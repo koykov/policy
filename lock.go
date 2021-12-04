@@ -13,7 +13,7 @@ type Lock struct {
 	lfc, lc int32
 }
 
-// Set new policy.
+// SetPolicy sets lock's policy.
 //
 // Use it to enable Locked policy before critical sections and switch back to LockFree afterward.
 func (l *Lock) SetPolicy(new Policy) {
@@ -25,7 +25,7 @@ func (l *Lock) SetPolicy(new Policy) {
 	}
 }
 
-// Get current policy.
+// GetPolicy returns current policy.
 func (l *Lock) GetPolicy() Policy {
 	return Policy(atomic.LoadUint32((*uint32)(&l.policy)))
 }
