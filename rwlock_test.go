@@ -75,13 +75,13 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 
 		var (
 			wg    sync.WaitGroup
-			done  = make([]chan bool, 100)
+			done  = make([]chan struct{}, 100)
 			state uint32
 		)
 		for i := 0; i < 100; i++ {
 			wg.Add(1)
-			done[i] = make(chan bool, 1)
-			go func(done chan bool) {
+			done[i] = make(chan struct{}, 1)
+			go func(done chan struct{}) {
 				select {
 				case <-done:
 					wg.Done()
@@ -114,7 +114,7 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 		}
 
 		for i := 0; i < 100; i++ {
-			done[i] <- true
+			done[i] <- struct{}{}
 		}
 
 		wg.Done()
