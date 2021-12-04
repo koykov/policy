@@ -40,83 +40,83 @@ func (s *testStage) Read() {
 	_, _ = v, ok
 }
 
-func BenchmarkLockPolicyLocked(b *testing.B) {
-	stage := testStage{data: make(map[int32]int32, testStageCap)}
-	b.ResetTimer()
-	b.ReportAllocs()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			if rand.Float64() < 0.5 {
-				stage.Read()
-			} else {
-				stage.Write()
-			}
-		}
-	})
-}
-
-func BenchmarkLockPolicyLockFree(b *testing.B) {
-	stage := testStage{data: make(map[int32]int32, testStageCap)}
-	stage.Fill(2)
-	stage.lock.SetPolicy(LockFree)
-
-	b.ResetTimer()
-	b.ReportAllocs()
-	b.RunParallel(func(pb *testing.PB) {
-		for pb.Next() {
-			stage.Read()
-		}
-	})
-}
-
-func BenchmarkLockPolicyMixed(b *testing.B) {
-	stage := testStage{data: make(map[int32]int32, testStageCap)}
-	stage.Fill(testStageCap)
-	stage.lock.SetPolicy(LockFree)
-
-	var (
-		wg    sync.WaitGroup
-		done  = make([]chan bool, 100)
-		state uint32
-	)
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		done[i] = make(chan bool, 1)
-		go func(done chan bool) {
-			select {
-			case <-done:
-				wg.Done()
-				return
-			default:
-				if atomic.LoadUint32(&state) == 0 {
+func BenchmarkLockPolicy(b *testing.B) {
+	b.Run("locked", func(b *testing.B) {
+		stage := testStage{data: make(map[int32]int32, testStageCap)}
+		b.ResetTimer()
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				if rand.Float64() < 0.5 {
 					stage.Read()
 				} else {
-					if rand.Float64() < 0.5 {
-						stage.Read()
-					} else {
-						stage.Write()
-					}
+					stage.Write()
 				}
 			}
-		}(done[i])
-	}
+		})
+	})
+	b.Run("lock free", func(b *testing.B) {
+		stage := testStage{data: make(map[int32]int32, testStageCap)}
+		stage.Fill(2)
+		stage.lock.SetPolicy(LockFree)
 
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		if i%1e6 == 0 && i%2e6 != 0 {
-			stage.lock.SetPolicy(Locked)
-			atomic.StoreUint32(&state, 1)
+		b.ResetTimer()
+		b.ReportAllocs()
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				stage.Read()
+			}
+		})
+	})
+	b.Run("mixed", func(b *testing.B) {
+		stage := testStage{data: make(map[int32]int32, testStageCap)}
+		stage.Fill(testStageCap)
+		stage.lock.SetPolicy(LockFree)
+
+		var (
+			wg    sync.WaitGroup
+			done  = make([]chan bool, 100)
+			state uint32
+		)
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			done[i] = make(chan bool, 1)
+			go func(done chan bool) {
+				select {
+				case <-done:
+					wg.Done()
+					return
+				default:
+					if atomic.LoadUint32(&state) == 0 {
+						stage.Read()
+					} else {
+						if rand.Float64() < 0.5 {
+							stage.Read()
+						} else {
+							stage.Write()
+						}
+					}
+				}
+			}(done[i])
 		}
-		if i%2e6 == 0 {
-			atomic.StoreUint32(&state, 0)
-			stage.lock.SetPolicy(LockFree)
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if i%1e6 == 0 && i%2e6 != 0 {
+				stage.lock.SetPolicy(Locked)
+				atomic.StoreUint32(&state, 1)
+			}
+			if i%2e6 == 0 {
+				atomic.StoreUint32(&state, 0)
+				stage.lock.SetPolicy(LockFree)
+			}
 		}
-	}
 
-	for i := 0; i < 100; i++ {
-		done[i] <- true
-	}
+		for i := 0; i < 100; i++ {
+			done[i] <- true
+		}
 
-	wg.Done()
+		wg.Done()
+	})
 }
