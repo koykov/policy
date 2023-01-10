@@ -5,7 +5,7 @@ import (
 	"sync/atomic"
 )
 
-// RWLock is a read/Write lock policy implementation.
+// RWLock is a read/write lock policy implementation.
 type RWLock struct {
 	policy Policy
 	mux    sync.RWMutex
