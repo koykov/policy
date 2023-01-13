@@ -44,7 +44,6 @@ func BenchmarkLockPolicy(b *testing.B) {
 	b.Run("locked", func(b *testing.B) {
 		stage := testStage{data: make(map[int32]int32, testStageCap)}
 		b.ResetTimer()
-		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				if rand.Float64() < 0.5 {
@@ -61,7 +60,6 @@ func BenchmarkLockPolicy(b *testing.B) {
 		stage.lock.SetPolicy(LockFree)
 
 		b.ResetTimer()
-		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				stage.Read()
@@ -69,31 +67,35 @@ func BenchmarkLockPolicy(b *testing.B) {
 		})
 	})
 	b.Run("mixed", func(b *testing.B) {
+		const workers = 1
+
 		stage := testStage{data: make(map[int32]int32, testStageCap)}
 		stage.Fill(testStageCap)
 		stage.lock.SetPolicy(LockFree)
 
 		var (
 			wg    sync.WaitGroup
-			done  = make([]chan struct{}, 100)
+			done  = make([]chan struct{}, workers)
 			state uint32
 		)
-		for i := 0; i < 100; i++ {
+		for i := 0; i < workers; i++ {
 			wg.Add(1)
 			done[i] = make(chan struct{}, 1)
 			go func(done chan struct{}) {
-				select {
-				case <-done:
-					wg.Done()
-					return
-				default:
-					if atomic.LoadUint32(&state) == 0 {
-						stage.Read()
-					} else {
-						if rand.Float64() < 0.5 {
+				for {
+					select {
+					case <-done:
+						wg.Done()
+						return
+					default:
+						if atomic.LoadUint32(&state) == 0 {
 							stage.Read()
 						} else {
-							stage.Write()
+							if rand.Float64() < 0.5 {
+								stage.Read()
+							} else {
+								stage.Write()
+							}
 						}
 					}
 				}
@@ -101,22 +103,25 @@ func BenchmarkLockPolicy(b *testing.B) {
 		}
 
 		b.ResetTimer()
-		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			if i%1e6 == 0 && i%2e6 != 0 {
+				print(atomic.LoadUint32(&state))
 				stage.lock.SetPolicy(Locked)
 				atomic.StoreUint32(&state, 1)
+				println(atomic.LoadUint32(&state))
 			}
 			if i%2e6 == 0 {
+				print(atomic.LoadUint32(&state))
 				atomic.StoreUint32(&state, 0)
 				stage.lock.SetPolicy(LockFree)
+				println(atomic.LoadUint32(&state))
 			}
 		}
 
-		for i := 0; i < 100; i++ {
+		for i := 0; i < workers; i++ {
 			done[i] <- struct{}{}
 		}
 
-		wg.Done()
+		wg.Wait()
 	})
 }

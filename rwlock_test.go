@@ -44,7 +44,6 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 	b.Run("locked", func(b *testing.B) {
 		stage := testStageRW{data: make(map[int32]int32, testStageCapRW)}
 		b.ResetTimer()
-		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				if rand.Float64() < 0.5 {
@@ -61,7 +60,6 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 		stage.lock.SetPolicy(LockFree)
 
 		b.ResetTimer()
-		b.ReportAllocs()
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
 				stage.Read()
@@ -82,18 +80,20 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 			wg.Add(1)
 			done[i] = make(chan struct{}, 1)
 			go func(done chan struct{}) {
-				select {
-				case <-done:
-					wg.Done()
-					return
-				default:
-					if atomic.LoadUint32(&state) == 0 {
-						stage.Read()
-					} else {
-						if rand.Float64() < 0.5 {
+				for {
+					select {
+					case <-done:
+						wg.Done()
+						return
+					default:
+						if atomic.LoadUint32(&state) == 0 {
 							stage.Read()
 						} else {
-							stage.Write()
+							if rand.Float64() < 0.5 {
+								stage.Read()
+							} else {
+								stage.Write()
+							}
 						}
 					}
 				}
@@ -101,7 +101,6 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 		}
 
 		b.ResetTimer()
-		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			if i%1e6 == 0 && i%2e6 != 0 {
 				stage.lock.SetPolicy(Locked)
@@ -117,6 +116,6 @@ func BenchmarkRWLockPolicy(b *testing.B) {
 			done[i] <- struct{}{}
 		}
 
-		wg.Done()
+		wg.Wait()
 	})
 }
